@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <cv.h>
 #include <opencv/cxcore.h>
@@ -6,9 +5,26 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 
 const int _TRESHOLD = 35;
+const int _FFMPEG_CMND_SLICES = 5;
+const std::string ffmpeg_cmnd_1 = "ffmpeg -i ";
+const std::string ffmpeg_cmnd_2 = " -ss ";
+const std::string ffmpeg_cmnd_3 = " -to ";
+const std::string ffmpeg_cmnd_4 = " -c:v copy -c:a copy part";
+const std::string ffmpeg_cmnd_5 = ".mp4";
+const std::string ffmpeg_arr[_FFMPEG_CMND_SLICES] ={ffmpeg_cmnd_1,ffmpeg_cmnd_2,ffmpeg_cmnd_3,ffmpeg_cmnd_4,ffmpeg_cmnd_5};
+
+std::string ffmpegCutCommand(std::string argv, const std::string * ffmpg_array, const std::string file_cut_start, const std::string file_cut_end, int partNum){
+    std::string numStr;
+    std::stringstream o;
+    o << partNum;
+    numStr = o.str();
+    std::string out =ffmpg_array[0]+ argv + ffmpg_array[1]+ file_cut_start+ffmpg_array[2]+file_cut_end+ffmpg_array[3]+numStr+ffmpg_array[4];
+    return out;
+}
 
 std::string frameToTime(const int &frameNum, const int &fps){
     char digits[10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
@@ -26,19 +42,25 @@ std::string frameToTime(const int &frameNum, const int &fps){
     return out;
 }
 
-int main()
+int main(int argc,  char** argv)
 {
+    //argv[1] should contain file name with extention
+    if (argc < 2){
+        std::cout<<"No filename to analyse found.\n";
+        return -3;
+    }
+    
     std::vector<std::string> cuts;
     
     //file part
     std::ofstream cut_log;
     cut_log.open ("cut_log.txt");
     
-    if 	(cut_log.is_open()){
+    if  (cut_log.is_open()){
         int key = 0;
     
-        CvCapture * capture = cvCaptureFromFile( "output_1.mp4" );
-        cv::VideoCapture cap("output_1.mp4");
+        CvCapture * capture = cvCaptureFromFile(argv[1]);
+        cv::VideoCapture cap(argv[1]);
         cv::Mat image_mat;
         cap.read(image_mat);
         CvMat oldMat = image_mat;
@@ -50,7 +72,7 @@ int main()
         if ( !capture )
         
         {
-            fprintf( stderr, "Cannot open AVI!\n" );
+            fprintf( stderr, "Cannot open file!\n" );
             return 1;
         }
         if ( !cap.isOpened() )  // if not success, exit program
@@ -69,7 +91,7 @@ int main()
         long int summ = 0;
         std::string frameTime;
         bool cut_Flag = true;
-        system("ls -lR > foo.txt");
+        //system(console_ffmpeg_command);
         while( key != 'x' )
         {
             frame = cvQueryFrame( capture );
@@ -122,6 +144,8 @@ int main()
             if(key==27 )break;
             cvShowImage( "dest",destframe);
             key = cvWaitKey( 1000 / fps );
+            
+            //We increment frames by two because it's faster. May be not so accurate, but works fine for now.
             frameNum += 2;
             //cvReleaseImage(&frame);
             cvReleaseImage(&currframe);
@@ -129,7 +153,36 @@ int main()
         cvDestroyWindow( "dest" );
         cvReleaseCapture( &capture );
         cut_log.close();
-        std::cout<<"VECTOR CONTAINS "<<cuts.size();
+        
+        //Start cutting procces
+        //command example
+        //ffmpeg -i in.mp4 -ss 00:00:03 -to 00:00:09 -c:v copy -c:a copy part1.mp4
+        std::string command = "";
+        if (cuts[0] == "00:00:00.00"){
+            for(int i = 0; i+1 < cuts.size();i += 2){
+                command = ffmpegCutCommand(argv[1],ffmpeg_arr,cuts[i+1],cuts[i+2],(i+1)/2);
+                system(&command[0]);
+                std::cout<<"********************************";
+            }
+            
+        ///This part not tested yet
+        } else {
+            command = ffmpegCutCommand(argv[1],ffmpeg_arr,cuts[0],cuts[1],1);
+            system(&command[0]);
+            for(int i = 0; i < cuts.size();i += 2){
+                command = ffmpegCutCommand(argv[1],ffmpeg_arr,cuts[i],cuts[i+1],(i+1)/2);
+                system(&command[0]);
+            }
+        }
+        
+        ////Add here ffmpeg commands for concatenating filese
+        ////example: ffmpeg -f concat -i joinlist.txt -c copy joinedfile.mp4
+        ////joinlist.txt should look like:
+        ////
+        ////file 'part1.mp4'
+        ////file 'part2.mp4'
+        
+        
         return 0;
     } else {
         std::cout << "Unable to open file";
