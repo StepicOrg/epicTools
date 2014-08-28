@@ -9,28 +9,39 @@
 
 
 const int _TRESHOLD = 35;
-const int _FFMPEG_CMND_SLICES = 5;
+const int _FFMPEG_CMND_SLICES = 6;
 const std::string ffmpeg_cmnd_1 = "ffmpeg -i ";
 const std::string ffmpeg_cmnd_2 = " -ss ";
 const std::string ffmpeg_cmnd_3 = " -to ";
-const std::string ffmpeg_cmnd_4 = " -c:v copy -c:a copy part";
-const std::string ffmpeg_cmnd_5 = ".mp4";
-const std::string ffmpeg_arr[_FFMPEG_CMND_SLICES] ={ffmpeg_cmnd_1,ffmpeg_cmnd_2,ffmpeg_cmnd_3,ffmpeg_cmnd_4,ffmpeg_cmnd_5};
+const std::string ffmpeg_cmnd_4 = " -vcodec libx264 -c:a copy part";
+const std::string ffmpeg_cmnd_5 = ".mp4 -force_key_frames ";
+const std::string ffmpeg_cmnd_6 = " -force_key_frames ";
+const std::string ffmpeg_arr[_FFMPEG_CMND_SLICES] ={ffmpeg_cmnd_1,ffmpeg_cmnd_2,ffmpeg_cmnd_3,ffmpeg_cmnd_4,ffmpeg_cmnd_5,ffmpeg_cmnd_6};
 
+// Returns string command for ffmpeg
+//smth like : ffmpeg -i in.mp4 -ss 00:00:03 -to 00:00:09 -c:v copy -c:a copy part1.mp4
 std::string ffmpegCutCommand(std::string argv, const std::string * ffmpg_array, const std::string file_cut_start, const std::string file_cut_end, int partNum){
     std::string numStr;
     std::stringstream o;
     o << partNum;
     numStr = o.str();
-    std::string out =ffmpg_array[0]+ argv + ffmpg_array[1]+ file_cut_start+ffmpg_array[2]+file_cut_end+ffmpg_array[3]+numStr+ffmpg_array[4];
+    std::string out =ffmpg_array[0]+ argv + ffmpg_array[1]+ file_cut_start+ffmpg_array[2]+file_cut_end+ffmpg_array[3]+numStr+ffmpg_array[4]+ file_cut_start + ffmpg_array[5] + file_cut_end;
     return out;
 }
 
+//Converts frame number into string code
 std::string frameToTime(const int &frameNum, const int &fps){
     char digits[10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
     std::string out;
     out = "00:00:00.00";
-    int frm = frameNum % fps;
+    //int tmp = frameNum %fps;
+    //int frm = 0;
+    //(tmp == 0) ? (frm = 0) : (frm  = (100*fps)/(frameNum % fps));
+    int frm = 0;
+    if (frameNum != 0) {
+        frm = (100* (frameNum%fps))/fps;
+    }
+    std::cout<<"FRM = "<<frm<<" FRAME = "<< frameNum << "\n";
     int min = (frameNum / fps) / 60;
     int sec = (frameNum / fps) % 60;
     out[3] = digits[min/10];
@@ -42,6 +53,24 @@ std::string frameToTime(const int &frameNum, const int &fps){
     return out;
 }
 
+//Creates txt file with cuts
+void generateJoinList(std::vector<std::string> &cuts){
+    std::ofstream joinList;
+    joinList.open ("joinlist.txt");
+    if 	(joinList.is_open()){
+        unsigned long size = cuts.size();
+        size = (size+1)/ 2;
+        std::cout<<"SIZE = "<<size;
+        for (int i = 0; i < size; i++){
+            joinList<<"file 'part"<<i<<".mp4'\n";
+        }
+    } else {
+        std::cout<<"ERROR WHILE OPENING FILE";
+        return;
+    }
+    joinList.close();
+}
+
 int main(int argc,  char** argv)
 {
     //argv[1] should contain file name with extention
@@ -50,13 +79,15 @@ int main(int argc,  char** argv)
         return -3;
     }
     
+    //Contains all timecodes
     std::vector<std::string> cuts;
     
-    //file part
+    //file part.
+    //Do we really need it?? Not sure
     std::ofstream cut_log;
     cut_log.open ("cut_log.txt");
     
-    if  (cut_log.is_open()){
+    if 	(cut_log.is_open()){
         int key = 0;
     
         CvCapture * capture = cvCaptureFromFile(argv[1]);
@@ -64,6 +95,7 @@ int main(int argc,  char** argv)
         cv::Mat image_mat;
         cap.read(image_mat);
         CvMat oldMat = image_mat;
+        //initialization of scal
         CvScalar scal = cvGet2D( &oldMat,0,0);
         IplImage* frame = cvQueryFrame( capture );
         IplImage* currframe = cvCreateImage(cvGetSize(frame),IPL_DEPTH_8U,3);
@@ -84,6 +116,7 @@ int main(int argc,  char** argv)
     
         int fps = ( int )cvGetCaptureProperty( capture, CV_CAP_PROP_FPS );
         std::cout << fps << " <<FPS\n";
+        //generate matrix of framesize
         CvMat *mat = cvCreateMat(destframe->height,destframe->width,CV_32FC3 );
     
         int frameNum = 0;
@@ -103,6 +136,8 @@ int main(int argc,  char** argv)
             cvSub(frame,currframe,destframe);
             cvConvert( destframe, mat);
             summ = 0;
+            
+            //Remove hardcoded HD defenition
             for(int i=0;i<1920;i++)
                     {
                         for(int j=0;j<1080;j++)
@@ -142,7 +177,7 @@ int main(int argc,  char** argv)
             }
         
             if(key==27 )break;
-            cvShowImage( "dest",destframe);
+            //cvShowImage( "dest",destframe);
             key = cvWaitKey( 1000 / fps );
             
             //We increment frames by two because it's faster. May be not so accurate, but works fine for now.
@@ -155,8 +190,6 @@ int main(int argc,  char** argv)
         cut_log.close();
         
         //Start cutting procces
-        //command example
-        //ffmpeg -i in.mp4 -ss 00:00:03 -to 00:00:09 -c:v copy -c:a copy part1.mp4
         std::string command = "";
         if (cuts[0] == "00:00:00.00"){
             for(int i = 0; i+1 < cuts.size();i += 2){
@@ -166,9 +199,9 @@ int main(int argc,  char** argv)
             
         ///This part not tested yet
         } else {
-            command = ffmpegCutCommand(argv[1],ffmpeg_arr,cuts[0],cuts[1],1);
+            command = ffmpegCutCommand(argv[1],ffmpeg_arr,"00:00:00.00",cuts[0],0);
             system(&command[0]);
-            for(int i = 0; i < cuts.size();i += 2){
+            for(int i = 1; i+1 < cuts.size();i += 2){
                 command = ffmpegCutCommand(argv[1],ffmpeg_arr,cuts[i],cuts[i+1],(i+1)/2);
                 system(&command[0]);
             }
@@ -180,6 +213,9 @@ int main(int argc,  char** argv)
         ////
         ////file 'part1.mp4'
         ////file 'part2.mp4'
+        
+        generateJoinList(cuts);
+        system("ffmpeg -f concat -i joinlist.txt -c copy joinedfile.mp4");
         
         
         return 0;
