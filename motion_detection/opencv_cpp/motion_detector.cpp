@@ -162,7 +162,6 @@ int main(int argc,  char** argv)
             for(int i = 0; i+1 < cuts.size();i += 2){
                 command = ffmpegCutCommand(argv[1],ffmpeg_arr,cuts[i+1],cuts[i+2],(i+1)/2);
                 system(&command[0]);
-                std::cout<<"********************************";
             }
             
         ///This part not tested yet
